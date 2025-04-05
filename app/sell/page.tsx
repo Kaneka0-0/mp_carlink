@@ -1,17 +1,23 @@
+//sell/page.tsx
+
 "use client"
 
 import type React from "react"
 
+import { auth } from "@/lib/firebase"
+import { onAuthStateChanged, User } from "firebase/auth"
 import { ArrowLeft, Car } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { submitNewVehicle } from "@/lib/api"
 import { uploadVehicleImages } from "@/lib/storage"
 
 export default function SellPage() {
@@ -19,9 +25,28 @@ export default function SellPage() {
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const router = useRouter()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUser(user)
+      } else {
+        // Redirect to login if not authenticated
+        router.push('/login')
+      }
+    })
+
+    return () => unsubscribe()
+  }, [router])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
+    if (!user) {
+      console.error("User must be authenticated to upload files");
+      return;
+    }
 
     const files = Array.from(e.target.files);
 
@@ -31,15 +56,11 @@ export default function SellPage() {
     // Update state with local preview URLs
     setUploadedFiles((prev) => [...prev, ...localPreviews]);
 
-    console.log("Local previews added:", localPreviews);
-
     setIsUploading(true);
 
     try {
       // Upload files to Firebase Storage
       const uploadedUrls = await uploadVehicleImages(files);
-
-      console.log("Uploaded URLs:", uploadedUrls);
 
       // Replace local previews with uploaded URLs
       setUploadedFiles((prev) =>
@@ -52,21 +73,78 @@ export default function SellPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user) {
+      console.error("User must be authenticated to submit vehicle");
+      return;
+    }
 
-    // Simulate form submission
-    setTimeout(() => {
-      setIsSubmitting(false)
-      setIsSuccess(true)
+    setIsSubmitting(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      
+      // Get all form values
+      const brand = formData.get('brand') as string;
+      const model = formData.get('model') as string;
+      const year = parseInt(formData.get('year') as string);
+      const mileage = parseInt(formData.get('mileage') as string);
+      const startingPrice = parseInt(formData.get('starting-price') as string);
+      const reservePriceStr = formData.get('reserve-price') as string;
+      const reservePrice = reservePriceStr ? parseInt(reservePriceStr) : undefined;
+      const type = formData.get('type') as string;
+      const color = formData.get('color') as string;
+      const description = formData.get('description') as string;
+
+      // Validate required fields with specific messages
+      const errors: string[] = [];
+      
+      if (!brand) errors.push("Brand is required");
+      if (!model) errors.push("Model is required");
+      if (!year || isNaN(year)) errors.push("Valid year is required");
+      if (!mileage || isNaN(mileage)) errors.push("Valid mileage is required");
+      if (!startingPrice || isNaN(startingPrice)) errors.push("Valid starting price is required");
+      if (!type) errors.push("Vehicle type is required");
+      if (!color) errors.push("Color is required");
+      if (!description) errors.push("Description is required");
+      if (uploadedFiles.length === 0) errors.push("At least one image is required");
+
+      if (errors.length > 0) {
+        throw new Error(errors.join("\n"));
+      }
+
+      const vehicleData = {
+        brand,
+        model,
+        year,
+        type,
+        color,
+        mileage,
+        description,
+        images: uploadedFiles,
+        startingPrice,
+        reservePrice,
+        status: 'active' as const,
+        createdAt: new Date(),
+        sellerId: user.uid
+      };
+
+      console.log("Submitting vehicle data:", vehicleData);
+      await submitNewVehicle(vehicleData, user.uid);
+      setIsSuccess(true);
 
       // Redirect to dashboard after success
       setTimeout(() => {
-        window.location.href = "/dashboard"
-      }, 2000)
-    }, 2000)
-  }
+        router.push("/dashboard");
+      }, 2000);
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      alert(error instanceof Error ? error.message : "Failed to submit vehicle. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Display the files that have been selected
   const renderSelectedFiles = () => {
@@ -175,29 +253,30 @@ export default function SellPage() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="brand">Brand</Label>
-                  <Select required>
+                  <Label htmlFor="brand">Brand *</Label>
+                  <Select required name="brand">
                     <SelectTrigger id="brand">
                       <SelectValue placeholder="Select brand" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="audi">Audi</SelectItem>
                       <SelectItem value="bmw">BMW</SelectItem>
-                      <SelectItem value="ford">Ford</SelectItem>
-                      <SelectItem value="honda">Honda</SelectItem>
-                      <SelectItem value="mercedes">Mercedes</SelectItem>
+                      <SelectItem value="mercedes">Mercedes-Benz</SelectItem>
                       <SelectItem value="tesla">Tesla</SelectItem>
                       <SelectItem value="toyota">Toyota</SelectItem>
+                      <SelectItem value="honda">Honda</SelectItem>
+                      <SelectItem value="ford">Ford</SelectItem>
+                      <SelectItem value="chevrolet">Chevrolet</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="model">Model</Label>
-                  <Input id="model" placeholder="e.g. Model 3, Civic" required />
+                  <Label htmlFor="model">Model *</Label>
+                  <Input required id="model" name="model" placeholder="Enter model name" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="year">Year</Label>
-                  <Select required>
+                  <Label htmlFor="year">Year *</Label>
+                  <Select required name="year">
                     <SelectTrigger id="year">
                       <SelectValue placeholder="Select year" />
                     </SelectTrigger>
@@ -211,8 +290,8 @@ export default function SellPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="type">Type</Label>
-                  <Select required>
+                  <Label htmlFor="type">Vehicle Type *</Label>
+                  <Select required name="type">
                     <SelectTrigger id="type">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
@@ -228,8 +307,8 @@ export default function SellPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="color">Color</Label>
-                  <Select required>
+                  <Label htmlFor="color">Color *</Label>
+                  <Select required name="color">
                     <SelectTrigger id="color">
                       <SelectValue placeholder="Select color" />
                     </SelectTrigger>
@@ -245,29 +324,31 @@ export default function SellPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="mileage">Mileage</Label>
-                  <Input id="mileage" type="number" placeholder="e.g. 15000" required />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Provide details about your vehicle's condition, features, and history"
-                    className="min-h-[120px]"
-                    required
+                  <Label htmlFor="mileage">Mileage *</Label>
+                  <Input 
+                    required 
+                    id="mileage" 
+                    name="mileage" 
+                    type="number" 
+                    min="0"
+                    placeholder="Enter mileage" 
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="starting-price">Starting Price ($)</Label>
-                  <Input id="starting-price" type="number" placeholder="e.g. 25000" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reserve-price">Reserve Price ($) (Optional)</Label>
-                  <Input id="reserve-price" type="number" placeholder="e.g. 30000" />
-                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description *</Label>
+                <Textarea 
+                  required 
+                  id="description" 
+                  name="description" 
+                  placeholder="Enter vehicle description"
+                  className="min-h-[50px]"
+                />
               </div>
             </CardContent>
           </Card>
+
+       
 
           <Card className="mb-8">
             <CardHeader>
@@ -313,9 +394,7 @@ export default function SellPage() {
                     </label>
                   </div>
                 </div>
-                {/* Render the selected files */}
                 {renderSelectedFiles()}
-                {/* Add a message if the user needs to select more files */}
                 {uploadedFiles.length > 0 && uploadedFiles.length < 3 && (
                   <p className="text-amber-600 text-sm">Please select at least 3 images to continue.</p>
                 )}
@@ -323,67 +402,72 @@ export default function SellPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="mb-8">
             <CardHeader>
-              <CardTitle>Auction Settings</CardTitle>
-              <CardDescription>Configure your auction settings</CardDescription>
+              <CardTitle>Auction Details</CardTitle>
+              <CardDescription>Set the starting price and reserve price for your auction</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Auction Duration</Label>
-                  <Select required defaultValue="7">
-                    <SelectTrigger id="duration">
-                      <SelectValue placeholder="Select duration" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="3">3 days</SelectItem>
-                      <SelectItem value="5">5 days</SelectItem>
-                      <SelectItem value="7">7 days</SelectItem>
-                      <SelectItem value="10">10 days</SelectItem>
-                      <SelectItem value="14">14 days</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="starting-price">Starting Price *</Label>
+                  <Input 
+                    required 
+                    id="starting-price" 
+                    name="starting-price" 
+                    type="number" 
+                    min="0"
+                    placeholder="Enter starting price" 
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="increment">Minimum Bid Increment ($)</Label>
-                  <Input id="increment" type="number" placeholder="e.g. 500" defaultValue="500" required />
+                  <Label htmlFor="reserve-price">Reserve Price (Optional)</Label>
+                  <Input 
+                    id="reserve-price" 
+                    name="reserve-price" 
+                    type="number" 
+                    min="0"
+                    placeholder="Enter reserve price" 
+                  />
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline" type="button" asChild>
-                <Link href="/">Cancel</Link>
-              </Button>
-              <Button
-                type="submit"
-                className="bg-teal-600 hover:bg-teal-700"
-                disabled={isSubmitting || uploadedFiles.length < 3}
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg
-                      className="mr-2 h-4 w-4 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    </svg>
-                    Creating Listing...
-                  </>
-                ) : (
-                  "Create Auction Listing"
-                )}
-              </Button>
-            </CardFooter>
           </Card>
+
+          <div className="flex justify-end gap-4">
+            <Link href="/">
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </Link>
+            <Button 
+              type="submit" 
+              disabled={isSubmitting || uploadedFiles.length < 3}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg
+                    className="mr-2 h-4 w-4 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  Creating Listing...
+                </>
+              ) : (
+                "Create Auction Listing"
+              )}
+            </Button>
+          </div>
         </form>
       )}
     </div>

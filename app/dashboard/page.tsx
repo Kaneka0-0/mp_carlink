@@ -1,67 +1,94 @@
+//dashboard/page.tsx
+
 "use client"
 
-import { useState } from "react"
+import { auth, db } from "@/lib/firebase"
+import { onAuthStateChanged, User } from "firebase/auth"
+import { collection, getDocs, query } from "firebase/firestore"
+import { Car, Clock, DollarSign, Eye, Heart, Plus, Settings, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { Car, Clock, DollarSign, Eye, Heart, Plus, Settings } from "lucide-react"
+import { useEffect, useState } from "react"
 
+
+
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { deleteVehicle } from "@/lib/api"
+
+interface Vehicle {
+  id: string;
+  title: string;
+  description: string;
+  images: string[];
+  status: 'active' | 'sold' | 'cancelled';
+  startingPrice: number;
+  currentBid?: number;
+  soldPrice?: number;
+  bids?: number;
+  endTime?: string;
+  sellerId: string;
+}
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("my-vehicles")
+  const [myVehicles, setMyVehicles] = useState<Vehicle[]>([])
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
 
-  const myVehicles = [
-    {
-      id: 1,
-      title: "2021 Tesla Model 3",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Electric • White • 15,000 miles",
-      currentBid: 32500,
-      bids: 12,
-      endTime: "2 days",
-      status: "active",
-    },
-    {
-      id: 2,
-      title: "2019 BMW X5",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "SUV • Black • 28,500 miles",
-      currentBid: 29800,
-      bids: 8,
-      endTime: "4 days",
-      status: "active",
-    },
-    {
-      id: 3,
-      title: "2020 Audi A4",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Sedan • Silver • 22,000 miles",
-      soldPrice: 27500,
-      status: "sold",
-    },
-  ]
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const fetchMyVehicles = async () => {
+      const q = query(collection(db, "vehicles"))
+      const querySnapshot = await getDocs(q)
+      const vehicles = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Vehicle[]
+      setMyVehicles(vehicles)
+    }
+
+    fetchMyVehicles()
+  }, [])
 
   const watchlist = [
     {
-      id: 4,
+      id: "4",
       title: "2022 Mercedes-Benz GLC",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "SUV • Blue • 8,000 miles",
+      image: "/cars/car-pic(7).jpg",
+      description: "SUV • Blue • 8,000 miles", 
       currentBid: 42500,
       bids: 15,
       endTime: "1 day",
-      status: "active",
+      status: "active" as const,
     },
     {
-      id: 5,
+      id: "5", 
       title: "2021 Porsche 911",
-      image: "/placeholder.svg?height=400&width=600",
+      image: "/cars/car-pic(8).jpg",
       description: "Coupe • Red • 5,500 miles",
       currentBid: 89500,
       bids: 22,
       endTime: "3 days",
-      status: "active",
+      status: "active" as const,
     },
   ]
 
@@ -89,6 +116,22 @@ export default function DashboardPage() {
       status: "active",
     },
   ]
+
+  const handleDeleteVehicle = async (vehicleId: string) => {
+    if (!user) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteVehicle(vehicleId, user.uid);
+      // Update the local state to remove the deleted vehicle
+      setMyVehicles(prev => prev.filter(v => v.id !== vehicleId));
+    } catch (error) {
+      console.error("Error deleting vehicle:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete vehicle");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="container max-w-7xl py-10">
@@ -141,7 +184,7 @@ export default function DashboardPage() {
                   <Card key={vehicle.id} className="overflow-hidden">
                     <div className="relative aspect-video overflow-hidden">
                       <img
-                        src={vehicle.image || "/placeholder.svg"}
+                        src={vehicle.images[0] || "/placeholder.svg"}
                         alt={vehicle.title}
                         className="object-cover w-full h-full"
                         width={600}
@@ -168,16 +211,16 @@ export default function DashboardPage() {
                         <div className="mt-4 flex items-center justify-between">
                           <div className="flex items-center gap-1 text-teal-600 font-medium">
                             <DollarSign className="h-4 w-4" />
-                            <span>Current Bid: ${vehicle.currentBid.toLocaleString()}</span>
+                            <span>Current Bid: ${(vehicle.currentBid || vehicle.startingPrice || 0).toLocaleString()}</span>
                           </div>
-                          <div className="text-sm text-gray-500">{vehicle.bids} bids</div>
+                          <div className="text-sm text-gray-500">{vehicle.bids || 0} bids</div>
                         </div>
                       )}
                       {vehicle.status === "sold" && (
                         <div className="mt-4 flex items-center justify-between">
                           <div className="flex items-center gap-1 text-green-600 font-medium">
                             <DollarSign className="h-4 w-4" />
-                            <span>Sold for: ${vehicle.soldPrice.toLocaleString()}</span>
+                            <span>Sold for: ${(vehicle.soldPrice || vehicle.startingPrice || 0).toLocaleString()}</span>
                           </div>
                         </div>
                       )}
@@ -189,10 +232,43 @@ export default function DashboardPage() {
                           View Details
                         </Link>
                       </Button>
-                      <Button variant="ghost" size="icon">
-                        <Settings className="h-4 w-4" />
-                        <span className="sr-only">Settings</span>
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                              disabled={isDeleting}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Delete</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Vehicle</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this vehicle? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteVehicle(vehicle.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                                disabled={isDeleting}
+                              >
+                                {isDeleting ? "Deleting..." : "Delete"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        <Button variant="ghost" size="icon">
+                          <Settings className="h-4 w-4" />
+                          <span className="sr-only">Settings</span>
+                        </Button>
+                      </div>
                     </CardFooter>
                   </Card>
                 ))}
@@ -345,4 +421,11 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+
+
+
+
+
+
 

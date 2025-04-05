@@ -1,4 +1,6 @@
-import { getDownloadURL, getStorage, ref, uploadBytesResumable } from "firebase/storage";
+import { addDoc, collection } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { auth, db, storage } from "./firebase";
 
 /**
  * Uploads an array of image files to Firebase Storage and returns their download URLs.
@@ -6,43 +8,50 @@ import { getDownloadURL, getStorage, ref, uploadBytesResumable } from "firebase/
  * @returns Array of download URLs.
  */
 export async function uploadVehicleImages(files: File[]): Promise<string[]> {
-  const storage = getStorage();
-  const imageUrls: string[] = [];
-
-  for (const file of files) {
-    console.log("Uploading file:", file.name);
-
-    const fileExtension = file.name.split(".").pop();
-    const fileName = `vehicles/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-    const storageRef = ref(storage, fileName);
-
-    try {
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log(`Upload progress for ${file.name}: ${progress}%`);
-          },
-          (error) => {
-            console.error("Upload error:", error);
-            reject(error);
-          },
-          async () => {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log("Download URL:", downloadURL);
-            imageUrls.push(downloadURL);
-            resolve();
-          }
-        );
-      });
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      throw error;
+  try {
+    if (!auth.currentUser) {
+      throw new Error("User must be authenticated to upload images");
     }
-  }
 
-  return imageUrls;
+    const uploadPromises = files.map(async (file) => {
+      const storageRef = ref(storage, `vehicles/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    });
+
+    return Promise.all(uploadPromises);
+  } catch (error) {
+    console.error("Error uploading images:", error);
+    throw error;
+  }
+}
+
+interface VehicleData {
+  brand: string;
+  model: string;
+  year: number;
+  type: string;
+  color: string;
+  mileage: number;
+  description: string;
+  images: string[];
+  startingPrice: number;
+  reservePrice?: number;
+  status: 'active' | 'sold' | 'expired';
+  createdAt: Date;
+}
+
+export async function createVehicleListing(vehicleData: VehicleData) {
+  try {
+    const docRef = await addDoc(collection(db, "vehicles"), {
+      ...vehicleData,
+      createdAt: new Date(),
+      status: 'active'
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating vehicle listing:", error);
+    throw error;
+  }
 }

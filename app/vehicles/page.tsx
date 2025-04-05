@@ -1,114 +1,40 @@
+// This file is part of the Vehicle Auction App project
+//vehicle/page.tsx
+
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
+import { db } from "@/lib/firebase"
+import { collection, getDocs } from "firebase/firestore"
 import { Car, Clock, DollarSign, Filter, Heart, Search } from "lucide-react"
+import Link from "next/link"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Slider } from "@/components/ui/slider"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Slider } from "@/components/ui/slider"
 
 export default function VehiclesPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [priceRange, setPriceRange] = useState([0, 100000])
   const [yearRange, setYearRange] = useState([2010, 2023])
+  const [vehicles, setVehicles] = useState([])
 
-  const vehicles = [
-    {
-      id: 1,
-      title: "2021 Tesla Model 3",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Electric • White • 15,000 miles",
-      currentBid: 32500,
-      bids: 12,
-      endTime: "2 days",
-      isWatched: true,
-    },
-    {
-      id: 2,
-      title: "2019 BMW X5",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "SUV • Black • 28,500 miles",
-      currentBid: 29800,
-      bids: 8,
-      endTime: "4 days",
-      isWatched: false,
-    },
-    {
-      id: 3,
-      title: "2020 Audi A4",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Sedan • Silver • 22,000 miles",
-      currentBid: 27500,
-      bids: 5,
-      endTime: "3 days",
-      isWatched: false,
-    },
-    {
-      id: 4,
-      title: "2022 Mercedes-Benz GLC",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "SUV • Blue • 8,000 miles",
-      currentBid: 42500,
-      bids: 15,
-      endTime: "1 day",
-      isWatched: true,
-    },
-    {
-      id: 5,
-      title: "2021 Porsche 911",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Coupe • Red • 5,500 miles",
-      currentBid: 89500,
-      bids: 22,
-      endTime: "3 days",
-      isWatched: false,
-    },
-    {
-      id: 6,
-      title: "2020 Lexus RX 350",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "SUV • White • 18,000 miles",
-      currentBid: 38500,
-      bids: 10,
-      endTime: "2 days",
-      isWatched: false,
-    },
-    {
-      id: 7,
-      title: "2022 Toyota Camry",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Sedan • Blue • 12,000 miles",
-      currentBid: 24500,
-      bids: 7,
-      endTime: "5 days",
-      isWatched: false,
-    },
-    {
-      id: 8,
-      title: "2021 Honda Accord",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Sedan • Black • 20,000 miles",
-      currentBid: 23000,
-      bids: 6,
-      endTime: "4 days",
-      isWatched: false,
-    },
-    {
-      id: 9,
-      title: "2020 Ford Mustang",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Coupe • Yellow • 15,000 miles",
-      currentBid: 35000,
-      bids: 14,
-      endTime: "2 days",
-      isWatched: false,
-    },
-  ]
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      const querySnapshot = await getDocs(collection(db, "vehicles"))
+      const vehicleData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      setVehicles(vehicleData)
+    }
+
+    fetchVehicles()
+  }, [])
 
   const toggleWatchlist = (id: number) => {
     // In a real app, this would update the state and make an API call
@@ -269,7 +195,7 @@ export default function VehiclesPage() {
               <Link href={`/vehicles/${vehicle.id}`} className="block">
                 <div className="relative aspect-video overflow-hidden">
                   <img
-                    src={vehicle.image || "/placeholder.svg"}
+                    src={vehicle.images?.[0] || "/placeholder.svg"}
                     alt={vehicle.title}
                     className="object-cover w-full h-full transition-transform group-hover:scale-105"
                     width={600}
@@ -290,7 +216,7 @@ export default function VehiclesPage() {
                   <div className="mt-4 flex items-center justify-between">
                     <div className="flex items-center gap-1 text-teal-600 font-medium">
                       <DollarSign className="h-4 w-4" />
-                      <span>Current Bid: ${vehicle.currentBid.toLocaleString()}</span>
+                      <span>Current Bid: ${vehicle.currentBid?.toLocaleString()}</span>
                     </div>
                     <div className="text-sm text-gray-500">{vehicle.bids} bids</div>
                   </div>
@@ -322,4 +248,6 @@ export default function VehiclesPage() {
     </div>
   )
 }
+
+
 

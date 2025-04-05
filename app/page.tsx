@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { ArrowRight, Car, Clock, DollarSign } from "lucide-react"
+import displaypic from "@/public/displaypic/head.jpg"
+
 
 import { Button } from "@/components/ui/button"
 
@@ -8,22 +10,22 @@ export default function Home() {
     <div className="flex min-h-screen flex-col">
       {/* The header is now managed in the root layout.tsx file */}
       <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-gradient-to-b from-white to-gray-50">
+        <section className="w-full py-12 md:py-24 lg:py-32 bg-gradient-to-b from-black to-black">
           <div className="container px-4 md:px-6">
             <div className="grid gap-6 lg:grid-cols-2 lg:gap-12 xl:grid-cols-2">
               <div className="flex flex-col justify-center space-y-4">
                 <div className="space-y-2">
-                  <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none">
+                  <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none text-white">
                     Find Your Dream Car at Auction
                   </h1>
-                  <p className="max-w-[600px] text-gray-500 md:text-xl">
+                  <p className="max-w-[600px] text-gray-300 md:text-xl">
                     Discover, bid, and win your next vehicle on our transparent auction platform. Sell your car with
                     ease and get the best market value.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 min-[400px]:flex-row">
                   <Link href="/vehicles">
-                    <Button size="lg" className="bg-teal-600 hover:bg-teal-700">
+                    <Button size="lg" className="bg-teal-600 hover:bg-teal-700 text-white">
                       Browse Auctions
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
@@ -35,13 +37,13 @@ export default function Home() {
                   </Link>
                 </div>
               </div>
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center w-full h-full">
                 <img
-                  alt="Car Auction"
-                  className="aspect-video overflow-hidden rounded-xl object-cover object-center"
-                  height="310"
-                  src="/placeholder.svg?height=620&width=1100"
-                  width="550"
+                  src={displaypic.src}
+                  alt="Car auction display"
+                  className="rounded-lg object-cover w-full h-full"
+                  width={1000}
+                  height={600}
                 />
               </div>
             </div>
@@ -162,7 +164,7 @@ export default function Home() {
           </div>
         </section>
       </main>
-      <footer className="w-full border-t bg-white py-6">
+      {/* <footer className="w-full border-t bg-white py-6">
         <div className="container flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-2 font-semibold">
             <Car className="h-5 w-5 text-teal-500" />
@@ -181,7 +183,7 @@ export default function Home() {
             </Link>
           </div>
         </div>
-      </footer>
+      </footer> */}
     </div>
   )
 }

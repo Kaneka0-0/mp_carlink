@@ -1,10 +1,15 @@
+// vehicles/[id]/Page.tsx
+
 "use client"
 
 import type React from "react"
+import { use } from "react"
 
-import { useState } from "react"
-import Link from "next/link"
+import { db } from "@/lib/firebase"
+import { doc, getDoc } from "firebase/firestore"
 import { ArrowLeft, Calendar, Clock, DollarSign, Heart, Info, MapPin, User } from "lucide-react"
+import Link from "next/link"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,47 +17,54 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function VehicleDetailPage({ params }: { params: { id: string } }) {
+interface Vehicle {
+  id: string;
+  title: string;
+  description: string;
+  images: string[];
+  details: {
+    brand: string;
+    model: string;
+    year: number;
+    type: string;
+    color: string;
+    mileage: number;
+    location: string;
+  };
+  auction: {
+    currentBid: number;
+    minIncrement: number;
+    bids: number;
+    endTime: string;
+    seller: {
+      name: string;
+      rating: number;
+      memberSince: string;
+    };
+  };
+}
+
+export default function VehicleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
   const [currentImage, setCurrentImage] = useState(0)
   const [bidAmount, setBidAmount] = useState("")
   const [isWatched, setIsWatched] = useState(false)
   const [isBidding, setIsBidding] = useState(false)
   const [bidSuccess, setBidSuccess] = useState(false)
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
 
-  // In a real app, this would be fetched from an API
-  const vehicle = {
-    id: params.id,
-    title: "2021 Tesla Model 3 Long Range",
-    description:
-      "This Tesla Model 3 Long Range is in excellent condition with only 15,000 miles. It features Autopilot, premium sound system, and a glass roof. The car has been well-maintained and comes with a clean history report.",
-    images: [
-      "/placeholder.svg?height=600&width=800",
-      "/placeholder.svg?height=600&width=800",
-      "/placeholder.svg?height=600&width=800",
-      "/placeholder.svg?height=600&width=800",
-      "/placeholder.svg?height=600&width=800",
-    ],
-    details: {
-      brand: "Tesla",
-      model: "Model 3",
-      year: 2021,
-      type: "Electric",
-      color: "White",
-      mileage: 15000,
-      location: "San Francisco, CA",
-    },
-    auction: {
-      currentBid: 32500,
-      bids: 12,
-      endTime: "2023-12-31T23:59:59",
-      minIncrement: 500,
-      seller: {
-        name: "John Smith",
-        rating: 4.9,
-        memberSince: "2018",
-      },
-    },
-  }
+  useEffect(() => {
+    const fetchVehicle = async () => {
+      const docRef = doc(db, "vehicles", resolvedParams.id)
+      const docSnap = await getDoc(docRef)
+
+      if (docSnap.exists()) {
+        setVehicle({ id: docSnap.id, ...docSnap.data() })
+      }
+    }
+
+    fetchVehicle()
+  }, [resolvedParams.id])
 
   const placeBid = (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,13 +86,18 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
     setIsWatched(!isWatched)
   }
 
-  // Calculate time remaining
-  const endDate = new Date(vehicle.auction.endTime)
+  // Calculate time remaining with null checks
+  const endDate = vehicle?.auction?.endTime ? new Date(vehicle.auction.endTime) : new Date()
   const now = new Date()
-  const timeRemaining = endDate.getTime() - now.getTime()
+  const timeRemaining = Math.max(0, endDate.getTime() - now.getTime())
   const days = Math.floor(timeRemaining / (1000 * 60 * 60 * 24))
   const hours = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
   const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60))
+
+  // Format time remaining text
+  const timeRemainingText = vehicle?.auction?.endTime
+    ? `${days}d ${hours}h ${minutes}m`
+    : "Loading..."
 
   return (
     <div className="container max-w-7xl py-10">
@@ -99,8 +116,8 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
           <div className="space-y-6">
             <div className="relative aspect-video overflow-hidden rounded-lg border">
               <img
-                src={vehicle.images[currentImage] || "/placeholder.svg"}
-                alt={vehicle.title}
+                src={vehicle?.images[currentImage] || "/placeholder.svg"}
+                alt={vehicle?.title}
                 className="object-cover w-full h-full"
                 width={800}
                 height={600}
@@ -108,7 +125,7 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="flex overflow-auto gap-2 pb-2">
-              {vehicle.images.map((image, index) => (
+              {vehicle?.images.map((image, index) => (
                 <button
                   key={index}
                   className={`relative aspect-video w-24 min-w-[6rem] overflow-hidden rounded-md border ${
@@ -117,7 +134,7 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
                   onClick={() => setCurrentImage(index)}
                 >
                   <img
-                    src={image || "/placeholder.svg"}
+                    src={image}
                     alt={`${vehicle.title} - Image ${index + 1}`}
                     className="object-cover w-full h-full"
                     width={200}
@@ -135,75 +152,89 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
               </TabsList>
 
               <TabsContent value="details" className="p-4 border rounded-md mt-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Brand</p>
-                    <p>{vehicle.details.brand}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Model</p>
-                    <p>{vehicle.details.model}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Year</p>
-                    <p>{vehicle.details.year}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Type</p>
-                    <p>{vehicle.details.type}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Color</p>
-                    <p>{vehicle.details.color}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-500">Mileage</p>
-                    <p>{vehicle.details.mileage.toLocaleString()} miles</p>
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <p className="text-sm font-medium text-gray-500">Location</p>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4 text-gray-400" />
-                      <p>{vehicle.details.location}</p>
+                {vehicle?.details ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Brand</p>
+                      <p>{vehicle.details.brand}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Model</p>
+                      <p>{vehicle.details.model}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Year</p>
+                      <p>{vehicle.details.year}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Type</p>
+                      <p>{vehicle.details.type}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Color</p>
+                      <p>{vehicle.details.color}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Mileage</p>
+                      <p>{vehicle.details.mileage?.toLocaleString()} miles</p>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <p className="text-sm font-medium text-gray-500">Location</p>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <p>{vehicle.details.location}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    Loading vehicle details...
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="description" className="p-4 border rounded-md mt-2">
-                <p className="text-gray-700 whitespace-pre-line">{vehicle.description}</p>
+                <p className="text-gray-700 whitespace-pre-line">
+                  {vehicle?.description || "Loading description..."}
+                </p>
               </TabsContent>
 
               <TabsContent value="seller" className="p-4 border rounded-md mt-2">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
-                    <User className="h-6 w-6 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{vehicle.auction.seller.name}</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <svg
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.floor(vehicle.auction.seller.rating)
-                                ? "text-yellow-400 fill-current"
-                                : "text-gray-300 fill-current"
-                            }`}
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                          </svg>
-                        ))}
+                {vehicle?.auction?.seller ? (
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+                      <User className="h-6 w-6 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{vehicle.auction.seller.name}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <svg
+                              key={i}
+                              className={`h-4 w-4 ${
+                                i < Math.floor(vehicle.auction.seller.rating || 0)
+                                  ? "text-yellow-400 fill-current"
+                                  : "text-gray-300 fill-current"
+                              }`}
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                            </svg>
+                          ))}
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {vehicle.auction.seller.rating || 0} • Member since {vehicle.auction.seller.memberSince || "N/A"}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-500">
-                        {vehicle.auction.seller.rating} • Member since {vehicle.auction.seller.memberSince}
-                      </p>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    Loading seller information...
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
@@ -212,9 +243,13 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{vehicle.title}</CardTitle>
+              <CardTitle>{vehicle?.title || "Loading..."}</CardTitle>
               <CardDescription>
-                {vehicle.details.brand} • {vehicle.details.model} • {vehicle.details.year}
+                {vehicle?.details ? (
+                  `${vehicle.details.brand} • ${vehicle.details.model} • ${vehicle.details.year}`
+                ) : (
+                  "Loading vehicle details..."
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -223,7 +258,9 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
                   <DollarSign className="h-5 w-5 text-teal-600" />
                   <div>
                     <p className="text-sm text-gray-500">Current Bid</p>
-                    <p className="text-xl font-bold">${vehicle.auction.currentBid.toLocaleString()}</p>
+                    <p className="text-xl font-bold">
+                      ${vehicle?.auction?.currentBid?.toLocaleString() || "0"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -231,7 +268,7 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
                   <div>
                     <p className="text-sm text-gray-500">Time Left</p>
                     <p className="font-medium">
-                      {days}d {hours}h {minutes}m
+                      {timeRemainingText}
                     </p>
                   </div>
                 </div>
@@ -240,11 +277,11 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
               <div className="flex items-center justify-between text-sm text-gray-500">
                 <div className="flex items-center gap-1">
                   <User className="h-4 w-4" />
-                  <span>{vehicle.auction.bids} bids</span>
+                  <span>{vehicle?.auction?.bids || 0} bids</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
-                  <span>Ends {endDate.toLocaleDateString()}</span>
+                  <span>Ends {vehicle?.auction?.endTime ? endDate.toLocaleDateString() : "Loading..."}</span>
                 </div>
               </div>
 
@@ -257,21 +294,26 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
                       <label htmlFor="bid-amount" className="text-sm font-medium">
                         Your Bid (USD)
                       </label>
-                      <div className="text-xs text-gray-500">Min. Increment: ${vehicle.auction.minIncrement}</div>
+                      {vehicle?.auction?.minIncrement && (
+                        <div className="text-xs text-gray-500">
+                          Min. Increment: ${vehicle.auction.minIncrement.toLocaleString()}
+                        </div>
+                      )}
                     </div>
                     <div className="relative">
                       <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                      <Input
-                        id="bid-amount"
-                        type="number"
-                        className="pl-8"
-                        placeholder={`${vehicle.auction.currentBid + vehicle.auction.minIncrement}`}
-                        value={bidAmount}
-                        onChange={(e) => setBidAmount(e.target.value)}
-                        min={vehicle.auction.currentBid + vehicle.auction.minIncrement}
-                        step={vehicle.auction.minIncrement}
-                        required
-                      />
+                      {vehicle?.auction && (
+                        <Input
+                          id="bid-amount"
+                          type="number"
+                          min={vehicle.auction.currentBid + vehicle.auction.minIncrement}
+                          step={vehicle.auction.minIncrement}
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                          className="pl-9"
+                          placeholder="Enter your bid amount"
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -353,4 +395,7 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
     </div>
   )
 }
+
+
+
 
