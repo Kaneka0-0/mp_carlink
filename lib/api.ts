@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp } from "firebase/firestore";
-import { deleteObject, ref, storage } from "firebase/storage";
+import { addDoc, collection, deleteDoc, doc, FieldValue, getDoc, getDocs, orderBy, query, serverTimestamp } from "firebase/firestore";
+import { deleteObject, getStorage, ref } from "firebase/storage";
 
 interface VehicleData {
   brand: string;
@@ -14,14 +14,14 @@ interface VehicleData {
   startingPrice: number;
   reservePrice?: number;
   status: 'active' | 'sold' | 'cancelled';
-  createdAt: Date;
+  createdAt: FieldValue | Date;
   sellerId: string;
 }
 
 export async function submitNewVehicle(formData: VehicleData, userId: string) {
   try {
     // Create a clean object without undefined values
-    const vehicleData = {
+    const vehicleData: VehicleData = {
       brand: formData.brand,
       model: formData.model,
       year: formData.year,
@@ -90,6 +90,7 @@ export async function deleteVehicle(vehicleId: string, userId: string) {
 
     // Delete associated images from storage if they exist
     if (vehicleData.images && vehicleData.images.length > 0) {
+      const storage = getStorage();
       const storageRef = ref(storage, `vehicles/${userId}/${vehicleId}`);
       await deleteObject(storageRef);
     }
