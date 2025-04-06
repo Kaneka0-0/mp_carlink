@@ -4,11 +4,12 @@ import type React from "react";
 
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { ArrowLeft, Car, CalendarClock } from "lucide-react";
+import { ArrowLeft, CalendarClock, Car } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import AuctionCountdown from "@/components/auctions/auctionCountdown";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,7 +30,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { submitNewVehicle } from "@/lib/api";
 import { uploadVehicleImages } from "@/lib/storage";
-import AuctionCountdown from "@/components/auctions/auctionCountdown";
 
 export default function SellPage() {
   const [isUploading, setIsUploading] = useState(false);
@@ -168,7 +168,7 @@ export default function SellPage() {
         images: uploadedFiles,
         startingPrice,
         reservePrice,
-        auctionEndDate,
+        endTime: auctionEndDate.toISOString(),
         status: "active" as const,
         createdAt: new Date(),
         sellerId: user.uid,
@@ -491,9 +491,9 @@ export default function SellPage() {
                   </div>
                 </div>
                 {renderSelectedFiles()}
-                {uploadedFiles.length > 0 && uploadedFiles.length < 3 && (
+                {uploadedFiles.length > 0 && uploadedFiles.length < 1 && (
                   <p className="text-amber-600 text-sm">
-                    Please select at least 3 images to continue.
+                    Please select at least 1 images to continue.
                   </p>
                 )}
               </div>
@@ -579,7 +579,7 @@ export default function SellPage() {
             </Link>
             <Button
               type="submit"
-              disabled={isSubmitting || uploadedFiles.length < 3}
+              disabled={isSubmitting || uploadedFiles.length < 1}
               className="bg-teal-600 hover:bg-teal-700"
             >
               {isSubmitting ? (

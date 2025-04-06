@@ -171,7 +171,7 @@ export function Header() {
             Sell Vehicle
           </Link>
           <Link
-            href="/ai-assistant"
+            href="/assistant"
             className="text-sm font-medium hover:text-teal-500 transition-colors flex items-center gap-1"
           >
             <MessageSquare className="h-4 w-4" />

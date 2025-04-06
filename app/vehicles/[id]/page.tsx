@@ -4,17 +4,16 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import {
   ArrowLeft,
-  Calendar,
-  Clock,
   DollarSign,
   Heart,
   Info,
   MapPin,
-  User,
+  User
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 
+import AuctionCountdown from "@/components/auctions/auctionCountdown";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/use-toast";
+import { Bid, mockUsers } from "@/lib/mockData";
+import { BiddingService } from "@/lib/services/biddingService";
 
 interface Vehicle {
   id: string;
@@ -53,30 +54,35 @@ interface Vehicle {
     rating: number;
     memberSince: string;
   };
+  price: number;
 }
 
 export default function VehicleDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
   const [currentImage, setCurrentImage] = useState(0);
-  const [bidAmount, setBidAmount] = useState("");
+  const [bidAmount, setBidAmount] = useState<string>("");
   const [isWatched, setIsWatched] = useState(false);
   const [isBidding, setIsBidding] = useState(false);
   const [bidSuccess, setBidSuccess] = useState(false);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(mockUsers[0]);
+  const [bidHistory, setBidHistory] = useState<Bid[]>([]);
+  const biddingService = BiddingService.getInstance();
 
   useEffect(() => {
     const fetchVehicle = async () => {
       try {
-        const docRef = doc(db, "vehicles", params.id);
+        const docRef = doc(db, "vehicles", id);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setVehicle({
+          const vehicleData: Vehicle = {
             id: docSnap.id,
             brand: data.brand,
             model: data.model,
@@ -94,9 +100,11 @@ export default function VehicleDetailPage({
             location: data.location,
             currentBid: data.currentBid || data.startingPrice,
             bids: data.bids || 0,
-            endTime: data.endTime,
+            endTime: data.endTime ? new Date(data.endTime).toISOString() : undefined,
             seller: data.seller,
-          });
+            price: data.currentBid || data.startingPrice,
+          };
+          setVehicle(vehicleData);
         } else {
           toast({
             title: "Error",
@@ -117,7 +125,13 @@ export default function VehicleDetailPage({
     };
 
     fetchVehicle();
-  }, [params.id]);
+  }, [id]);
+
+  useEffect(() => {
+    if (vehicle) {
+      setBidHistory(biddingService.getBidHistory(vehicle.id));
+    }
+  }, [vehicle]);
 
   const placeBid = (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,20 +189,19 @@ export default function VehicleDetailPage({
     });
   };
 
-  // Calculate time remaining with null checks
-  const endDate = vehicle?.endTime ? new Date(vehicle.endTime) : new Date();
-  const now = new Date();
-  const timeRemaining = Math.max(0, endDate.getTime() - now.getTime());
-  const days = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
-  const hours = Math.floor(
-    (timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-  );
-  const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
-
-  // Format time remaining text
-  const timeRemainingText = vehicle?.endTime
-    ? `${days}d ${hours}h ${minutes}m`
-    : "Loading...";
+  const handlePlaceBid = () => {
+    if (!vehicle || !currentUser) return;
+    
+    const amount = Number(bidAmount);
+    if (isNaN(amount)) return;
+    
+    const success = biddingService.placeBid(vehicle.id, currentUser.id, amount);
+    if (success) {
+      setBidHistory(biddingService.getBidHistory(vehicle.id));
+      // Update vehicle price
+      setVehicle(prev => prev ? { ...prev, currentBid: amount } : null);
+    }
+  };
 
   if (loading) {
     return (
@@ -374,39 +387,41 @@ export default function VehicleDetailPage({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-teal-600" />
-                  <div>
-                    <p className="text-sm text-gray-500">Current Bid</p>
-                    <p className="text-xl font-bold">
-                      $
-                      {(
-                        vehicle.currentBid || vehicle.startingPrice
-                      ).toLocaleString()}
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-gray-500">Current Bid</p>
+                  <p className="text-2xl font-bold">
+                    ${(vehicle.currentBid || vehicle.startingPrice).toLocaleString()}
+                  </p>
+                  {vehicle.reservePrice && (
+                    <p className="text-sm text-gray-500">
+                      Reserve: ${vehicle.reservePrice.toLocaleString()}
                     </p>
-                  </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-teal-600" />
-                  <div>
-                    <p className="text-sm text-gray-500">Time Left</p>
-                    <p className="font-medium">{timeRemainingText}</p>
-                  </div>
-                </div>
+                <Button
+                  variant={isWatched ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleWatchlist}
+                >
+                  <Heart
+                    className={`h-4 w-4 mr-2 ${
+                      isWatched ? "fill-current" : ""
+                    }`}
+                  />
+                  {isWatched ? "Watching" : "Watch"}
+                </Button>
               </div>
 
-              <div className="flex items-center justify-between text-sm text-gray-500">
-                <div className="flex items-center gap-1">
-                  <User className="h-4 w-4" />
-                  <span>{vehicle.bids || 0} bids</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    Ends{" "}
-                    {vehicle.endTime ? endDate.toLocaleDateString() : "N/A"}
-                  </span>
-                </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-gray-500">Auction Ends In</p>
+                {vehicle.endTime ? (
+                  <div className="text-2xl font-bold text-teal-600">
+                   <AuctionCountdown endDate={vehicle.endTime} />
+                  </div>
+                ) : (
+                  <p className="text-2xl font-bold text-gray-400">No end time set</p>
+                  
+                )}
               </div>
 
               <Separator />
@@ -513,53 +528,27 @@ export default function VehicleDetailPage({
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  {
-                    user: "u***r",
-                    amount:
-                      (vehicle.currentBid || vehicle.startingPrice) - 1000,
-                    date: "2 days ago",
-                  },
-                  {
-                    user: "j***n",
-                    amount:
-                      (vehicle.currentBid || vehicle.startingPrice) - 1500,
-                    date: "2 days ago",
-                  },
-                  {
-                    user: "s***h",
-                    amount:
-                      (vehicle.currentBid || vehicle.startingPrice) - 2000,
-                    date: "3 days ago",
-                  },
-                  {
-                    user: "m***e",
-                    amount:
-                      (vehicle.currentBid || vehicle.startingPrice) - 2500,
-                    date: "3 days ago",
-                  },
-                  {
-                    user: "t***y",
-                    amount: vehicle.startingPrice,
-                    date: "4 days ago",
-                  },
-                ].map((bid, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-gray-400" />
-                      <span>{bid.user}</span>
+                {bidHistory.map((bid) => {
+                  const bidder = mockUsers.find(u => u.id === bid.userId);
+                  return (
+                    <div key={bid.id} className="flex items-center justify-between p-4 border rounded">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={bidder?.avatar}
+                          alt={bidder?.name}
+                          className="w-10 h-10 rounded-full"
+                        />
+                        <div>
+                          <p className="font-semibold">{bidder?.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {new Date(bid.timestamp).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-lg font-bold">${bid.amount.toLocaleString()}</p>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-medium">
-                        ${bid.amount.toLocaleString()}
-                      </span>
-                      <span className="text-gray-500">{bid.date}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -568,3 +557,4 @@ export default function VehicleDetailPage({
     </div>
   );
 }
+

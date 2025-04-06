@@ -1,6 +1,10 @@
 "use client";
 
+import { toast } from "@/components/ui/use-toast";
 import { auth, db } from "@/lib/firebase";
+import { mockUsers } from "@/lib/mockData";
+import { BiddingService } from "@/lib/services/biddingService";
+import { Vehicle } from "@/lib/types";
 import { onAuthStateChanged, User } from "firebase/auth";
 import {
   collection,
@@ -16,14 +20,13 @@ import {
   DollarSign,
   Eye,
   Heart,
+  Loader2,
   Plus,
   Settings,
   Trash2,
-  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { toast } from "@/components/ui/use-toast";
 
 import {
   AlertDialog,
@@ -38,10 +41,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface Vehicle {
+interface DashboardVehicle {
   id: string;
   title: string;
   description: string;
@@ -68,10 +71,14 @@ const deleteVehicle = async (vehicleId: string, userId: string) => {
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("my-vehicles");
-  const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
+  const [myVehicles, setMyVehicles] = useState<DashboardVehicle[]>([] as DashboardVehicle[]);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [currentUser, setCurrentUser] = useState(mockUsers[0]);
+  const [myBids, setMyBids] = useState<Vehicle[]>([]);
+  const [wonAuctions, setWonAuctions] = useState<Vehicle[]>([]);
+  const biddingService = BiddingService.getInstance();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -98,7 +105,7 @@ export default function DashboardPage() {
         const vehicles = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        })) as Vehicle[];
+        })) as DashboardVehicle[];
         setMyVehicles(vehicles);
       } catch (error) {
         console.error("Error fetching vehicles:", error);
@@ -115,51 +122,104 @@ export default function DashboardPage() {
     fetchMyVehicles();
   }, [user]);
 
+  useEffect(() => {
+    if (currentUser) {
+      // Fetch vehicles for user's bids
+      const bidVehicleIds = currentUser.bids;
+      setMyBids(bidVehicleIds.map(id => ({
+        id,
+        brand: "Mock Brand",
+        model: "Mock Model",
+        year: 2023,
+        type: "Sedan",
+        color: "Black",
+        mileage: 50000,
+        description: "Mock vehicle description",
+        images: ["/placeholder.svg"],
+        startingPrice: 0,
+        price: 0,
+        status: "active",
+        createdAt: new Date(),
+        sellerId: "mock-seller",
+        currentBid: 0,
+        bids: 0,
+        endTime: new Date().toISOString(),
+        title: "Mock Vehicle Title",
+        image: "/placeholder.svg",
+        bidStatus: "highest"
+      })));
+
+      // Fetch vehicles for won auctions
+      const wonVehicleIds = currentUser.wonAuctions;
+      setWonAuctions(wonVehicleIds.map(id => ({
+        id,
+        brand: "Mock Brand",
+        model: "Mock Model",
+        year: 2023,
+        type: "Sedan",
+        color: "Black",
+        mileage: 50000,
+        description: "Mock vehicle description",
+        images: ["/placeholder.svg"],
+        startingPrice: 0,
+        price: 0,
+        status: "sold",
+        createdAt: new Date(),
+        sellerId: "mock-seller",
+        currentBid: 0,
+        bids: 0,
+        endTime: new Date().toISOString(),
+        title: "Mock Vehicle Title",
+        image: "/placeholder.svg",
+        bidStatus: "highest"
+      })));
+    }
+  }, [currentUser]);
+
   const watchlist = [
     {
       id: "4",
-      title: "2022 Mercedes-Benz GLC",
-      image: "/cars/car-pic(7).jpg",
+      brand: "Mercedes-Benz",
+      model: "GLC",
+      year: 2022,
+      type: "SUV",
+      color: "Blue",
+      mileage: 8000,
       description: "SUV • Blue • 8,000 miles",
+      images: ["/cars/041ceb5c-6382-4852-becd-b5af9907.jpg"],
+      startingPrice: 42500,
       currentBid: 42500,
       bids: 15,
       endTime: "1 day",
-      status: "active" as const,
+      status: "active",
+      createdAt: new Date(),
+      sellerId: "mock-seller",
+      price: 42500,
+      title: "2022 Mercedes-Benz GLC",
+      image: "/cars/041ceb5c-6382-4852-becd-b5af9907.jpg",
+      bidStatus: "highest"
     },
     {
       id: "5",
-      title: "2021 Porsche 911",
-      image: "/cars/car-pic(8).jpg",
+      brand: "Porsche",
+      model: "911",
+      year: 2021,
+      type: "Coupe",
+      color: "Red",
+      mileage: 5500,
       description: "Coupe • Red • 5,500 miles",
+      images: ["/cars/2025_porsche_911_coupe_carrera-4.jpg"],
+      startingPrice: 89500,
       currentBid: 89500,
       bids: 22,
       endTime: "3 days",
-      status: "active" as const,
-    },
-  ];
-
-  const myBids = [
-    {
-      id: "6",
-      title: "2020 Lexus RX 350",
-      image: "/placeholder.svg",
-      description: "SUV • White • 18,000 miles",
-      myBid: 36000,
-      currentBid: 38500,
-      bidStatus: "outbid",
-      endTime: "2 days",
       status: "active",
-    },
-    {
-      id: "7",
-      title: "2022 Toyota Camry",
-      image: "/placeholder.svg",
-      description: "Sedan • Blue • 12,000 miles",
-      myBid: 24500,
-      currentBid: 24500,
-      bidStatus: "highest",
-      endTime: "5 days",
-      status: "active",
+      createdAt: new Date(),
+      sellerId: "mock-seller",
+      price: 89500,
+      title: "2021 Porsche 911",
+      image: "/cars/2025_porsche_911_coupe_carrera-4.jpg",
+      bidStatus: "highest"
     },
   ];
 
@@ -418,8 +478,8 @@ export default function DashboardPage() {
                   <Card key={vehicle.id} className="overflow-hidden">
                     <div className="relative aspect-video overflow-hidden">
                       <img
-                        src={vehicle.image || "/placeholder.svg"}
-                        alt={vehicle.title}
+                        src={vehicle.images[0] || "/placeholder.svg"}
+                        alt={`${vehicle.brand} ${vehicle.model}`}
                         className="object-cover w-full h-full"
                         width={600}
                         height={400}
@@ -434,7 +494,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <CardContent className="p-4">
-                      <h3 className="font-semibold text-lg">{vehicle.title}</h3>
+                      <h3 className="font-semibold text-lg">{`${vehicle.brand} ${vehicle.model}`}</h3>
                       <p className="text-sm text-gray-500">
                         {vehicle.description}
                       </p>
@@ -442,11 +502,11 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-1 text-teal-600 font-medium">
                           <DollarSign className="h-4 w-4" />
                           <span>
-                            Current Bid: ${vehicle.currentBid.toLocaleString()}
+                            Current Bid: ${vehicle.currentBid?.toLocaleString() || vehicle.startingPrice.toLocaleString()}
                           </span>
                         </div>
                         <div className="text-sm text-gray-500">
-                          {vehicle.bids} bids
+                          {vehicle.bids || 0} bids
                         </div>
                       </div>
                     </CardContent>
@@ -460,7 +520,7 @@ export default function DashboardPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-red-500"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
                       >
                         <Heart className="h-4 w-4 fill-current" />
                         <span className="sr-only">Remove from watchlist</span>
@@ -494,8 +554,8 @@ export default function DashboardPage() {
                   <Card key={vehicle.id} className="overflow-hidden">
                     <div className="relative aspect-video overflow-hidden">
                       <img
-                        src={vehicle.image || "/placeholder.svg"}
-                        alt={vehicle.title}
+                        src={vehicle.images[0] || "/placeholder.svg"}
+                        alt={`${vehicle.brand} ${vehicle.model}`}
                         className="object-cover w-full h-full"
                         width={600}
                         height={400}
@@ -510,7 +570,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <CardContent className="p-4">
-                      <h3 className="font-semibold text-lg">{vehicle.title}</h3>
+                      <h3 className="font-semibold text-lg">{`${vehicle.brand} ${vehicle.model}`}</h3>
                       <p className="text-sm text-gray-500">
                         {vehicle.description}
                       </p>
@@ -519,17 +579,17 @@ export default function DashboardPage() {
                           <div className="flex items-center gap-1 font-medium">
                             <DollarSign className="h-4 w-4" />
                             <span>
-                              Your Bid: ${vehicle.myBid.toLocaleString()}
+                              Your Bid: ${vehicle.price.toLocaleString()}
                             </span>
                           </div>
                           <div
                             className={`text-sm font-medium px-2 py-1 rounded-full ${
-                              vehicle.bidStatus === "highest"
+                              vehicle.status === "active"
                                 ? "bg-green-100 text-green-700"
                                 : "bg-red-100 text-red-700"
                             }`}
                           >
-                            {vehicle.bidStatus === "highest"
+                            {vehicle.status === "active"
                               ? "Highest Bid"
                               : "Outbid"}
                           </div>
@@ -539,7 +599,7 @@ export default function DashboardPage() {
                             <DollarSign className="h-4 w-4" />
                             <span>
                               Current Bid: $
-                              {vehicle.currentBid.toLocaleString()}
+                              {vehicle.price.toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -552,7 +612,7 @@ export default function DashboardPage() {
                           View Details
                         </Link>
                       </Button>
-                      {vehicle.bidStatus === "outbid" && (
+                      {vehicle.status === "active" && (
                         <Button
                           size="sm"
                           className="bg-teal-600 hover:bg-teal-700"
