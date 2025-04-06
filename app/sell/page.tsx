@@ -1,45 +1,64 @@
-//sell/page.tsx
+"use client";
 
-"use client"
+import type React from "react";
 
-import type React from "react"
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { ArrowLeft, Car, CalendarClock } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-import { auth } from "@/lib/firebase"
-import { onAuthStateChanged, User } from "firebase/auth"
-import { ArrowLeft, Car } from "lucide-react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
-
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { submitNewVehicle } from "@/lib/api"
-import { uploadVehicleImages } from "@/lib/storage"
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { submitNewVehicle } from "@/lib/api";
+import { uploadVehicleImages } from "@/lib/storage";
+import AuctionCountdown from "@/components/auctions/auctionCountdown";
 
 export default function SellPage() {
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
-  const router = useRouter()
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [previewEndDate, setPreviewEndDate] = useState<Date | null>(null);
+  const router = useRouter();
+
+  // Set default end date 7 days from now
+  useEffect(() => {
+    const defaultEndDate = new Date();
+    defaultEndDate.setDate(defaultEndDate.getDate() + 7);
+    setPreviewEndDate(defaultEndDate);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setUser(user)
+        setUser(user);
       } else {
         // Redirect to login if not authenticated
-        router.push('/login')
+        router.push("/auth");
       }
-    })
+    });
 
-    return () => unsubscribe()
-  }, [router])
+    return () => unsubscribe();
+  }, [router]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -64,12 +83,24 @@ export default function SellPage() {
 
       // Replace local previews with uploaded URLs
       setUploadedFiles((prev) =>
-        prev.map((file) => (localPreviews.includes(file) ? uploadedUrls.shift() || file : file))
+        prev.map((file) =>
+          localPreviews.includes(file) ? uploadedUrls.shift() || file : file
+        )
       );
     } catch (error) {
       console.error("Error uploading files:", error);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dateValue = e.target.value;
+    if (dateValue) {
+      const newEndDate = new Date(dateValue);
+      setPreviewEndDate(newEndDate);
+    } else {
+      setPreviewEndDate(null);
     }
   };
 
@@ -84,31 +115,43 @@ export default function SellPage() {
 
     try {
       const formData = new FormData(e.currentTarget);
-      
+
       // Get all form values
-      const brand = formData.get('brand') as string;
-      const model = formData.get('model') as string;
-      const year = parseInt(formData.get('year') as string);
-      const mileage = parseInt(formData.get('mileage') as string);
-      const startingPrice = parseInt(formData.get('starting-price') as string);
-      const reservePriceStr = formData.get('reserve-price') as string;
-      const reservePrice = reservePriceStr ? parseInt(reservePriceStr) : undefined;
-      const type = formData.get('type') as string;
-      const color = formData.get('color') as string;
-      const description = formData.get('description') as string;
+      const brand = formData.get("brand") as string;
+      const model = formData.get("model") as string;
+      const year = parseInt(formData.get("year") as string);
+      const mileage = parseInt(formData.get("mileage") as string);
+      const startingPrice = parseInt(formData.get("starting-price") as string);
+      const reservePriceStr = formData.get("reserve-price") as string;
+      const reservePrice = reservePriceStr
+        ? parseInt(reservePriceStr)
+        : undefined;
+      const type = formData.get("type") as string;
+      const color = formData.get("color") as string;
+      const description = formData.get("description") as string;
+      const auctionEndDateStr = formData.get("auction-end-date") as string;
+      const auctionEndDate = new Date(auctionEndDateStr);
 
       // Validate required fields with specific messages
       const errors: string[] = [];
-      
+
       if (!brand) errors.push("Brand is required");
       if (!model) errors.push("Model is required");
       if (!year || isNaN(year)) errors.push("Valid year is required");
       if (!mileage || isNaN(mileage)) errors.push("Valid mileage is required");
-      if (!startingPrice || isNaN(startingPrice)) errors.push("Valid starting price is required");
+      if (!startingPrice || isNaN(startingPrice))
+        errors.push("Valid starting price is required");
       if (!type) errors.push("Vehicle type is required");
       if (!color) errors.push("Color is required");
       if (!description) errors.push("Description is required");
-      if (uploadedFiles.length === 0) errors.push("At least one image is required");
+      if (!auctionEndDateStr) errors.push("Auction end date is required");
+      if (uploadedFiles.length === 0)
+        errors.push("At least one image is required");
+
+      // Validate that end date is in the future
+      if (auctionEndDate <= new Date()) {
+        errors.push("Auction end date must be in the future");
+      }
 
       if (errors.length > 0) {
         throw new Error(errors.join("\n"));
@@ -125,9 +168,10 @@ export default function SellPage() {
         images: uploadedFiles,
         startingPrice,
         reservePrice,
-        status: 'active' as const,
+        auctionEndDate,
+        status: "active" as const,
         createdAt: new Date(),
-        sellerId: user.uid
+        sellerId: user.uid,
       };
 
       console.log("Submitting vehicle data:", vehicleData);
@@ -140,27 +184,47 @@ export default function SellPage() {
       }, 2000);
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert(error instanceof Error ? error.message : "Failed to submit vehicle. Please try again.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit vehicle. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Helper function to format today's date for min attribute
+  const getMinDate = () => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  };
+
+  // Helper function to format a date 30 days from now for max attribute
+  const getMaxDate = () => {
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + 30);
+    return maxDate.toISOString().split("T")[0];
+  };
+
   // Display the files that have been selected
   const renderSelectedFiles = () => {
-    console.log("Rendering selected files:", uploadedFiles);
-
     if (uploadedFiles.length === 0) return null;
 
     return (
       <div className="mt-4">
-        <p className="text-sm font-medium mb-2">Selected Files ({uploadedFiles.length}):</p>
+        <p className="text-sm font-medium mb-2">
+          Selected Files ({uploadedFiles.length}):
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {uploadedFiles.map((file, index) => (
-            <div key={index} className="relative rounded-md overflow-hidden border bg-gray-50">
+            <div
+              key={index}
+              className="relative rounded-md overflow-hidden border bg-gray-50"
+            >
               <div className="aspect-square relative">
                 <img
-                  src={file} // This will display the local preview or uploaded URL
+                  src={file}
                   alt={`Vehicle image ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -175,7 +239,17 @@ export default function SellPage() {
                   setUploadedFiles(newFiles);
                 }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
@@ -203,8 +277,12 @@ export default function SellPage() {
           <Car className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Sell Your Vehicle</h1>
-          <p className="text-gray-500">List your vehicle for auction and get the best market value</p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Sell Your Vehicle
+          </h1>
+          <p className="text-gray-500">
+            List your vehicle for auction and get the best market value
+          </p>
         </div>
       </div>
 
@@ -228,9 +306,12 @@ export default function SellPage() {
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
               </div>
-              <h2 className="text-xl font-semibold mb-2">Vehicle Listed Successfully!</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                Vehicle Listed Successfully!
+              </h2>
               <p className="text-gray-600 mb-6">
-                Your vehicle has been added to the auction. Redirecting to dashboard...
+                Your vehicle has been added to the auction. Redirecting to
+                dashboard...
               </p>
               <div className="flex gap-4">
                 <Link href="/dashboard">
@@ -248,7 +329,9 @@ export default function SellPage() {
           <Card className="mb-8">
             <CardHeader>
               <CardTitle>Vehicle Details</CardTitle>
-              <CardDescription>Enter the details of your vehicle</CardDescription>
+              <CardDescription>
+                Enter the details of your vehicle
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -272,7 +355,12 @@ export default function SellPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="model">Model *</Label>
-                  <Input required id="model" name="model" placeholder="Enter model name" />
+                  <Input
+                    required
+                    id="model"
+                    name="model"
+                    placeholder="Enter model name"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="year">Year *</Label>
@@ -282,7 +370,10 @@ export default function SellPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 20 }, (_, i) => (
-                        <SelectItem key={i} value={(new Date().getFullYear() - i).toString()}>
+                        <SelectItem
+                          key={i}
+                          value={(new Date().getFullYear() - i).toString()}
+                        >
                           {new Date().getFullYear() - i}
                         </SelectItem>
                       ))}
@@ -301,6 +392,7 @@ export default function SellPage() {
                       <SelectItem value="truck">Truck</SelectItem>
                       <SelectItem value="coupe">Coupe</SelectItem>
                       <SelectItem value="hatchback">Hatchback</SelectItem>
+                      <SelectItem value="SuperCar">SuperCar</SelectItem>
                       <SelectItem value="convertible">Convertible</SelectItem>
                       <SelectItem value="van">Van</SelectItem>
                     </SelectContent>
@@ -325,22 +417,22 @@ export default function SellPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="mileage">Mileage *</Label>
-                  <Input 
-                    required 
-                    id="mileage" 
-                    name="mileage" 
-                    type="number" 
+                  <Input
+                    required
+                    id="mileage"
+                    name="mileage"
+                    type="number"
                     min="0"
-                    placeholder="Enter mileage" 
+                    placeholder="Enter mileage"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Description *</Label>
-                <Textarea 
-                  required 
-                  id="description" 
-                  name="description" 
+                <Textarea
+                  required
+                  id="description"
+                  name="description"
                   placeholder="Enter vehicle description"
                   className="min-h-[50px]"
                 />
@@ -348,12 +440,12 @@ export default function SellPage() {
             </CardContent>
           </Card>
 
-       
-
           <Card className="mb-8">
             <CardHeader>
               <CardTitle>Vehicle Images</CardTitle>
-              <CardDescription>Upload high-quality images of your vehicle (min. 3 images)</CardDescription>
+              <CardDescription>
+                Upload high-quality images of your vehicle (min. 3 images)
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-6">
@@ -366,7 +458,11 @@ export default function SellPage() {
                 >
                   <div className="flex flex-col items-center justify-center gap-4 text-center">
                     <div>
-                      <p className="font-medium">{isUploading ? "Uploading..." : "Drag & drop your images here"}</p>
+                      <p className="font-medium">
+                        {isUploading
+                          ? "Uploading..."
+                          : "Drag & drop your images here"}
+                      </p>
                       <p className="text-sm text-gray-500">
                         {isUploading
                           ? "Please wait while we upload your images"
@@ -396,7 +492,9 @@ export default function SellPage() {
                 </div>
                 {renderSelectedFiles()}
                 {uploadedFiles.length > 0 && uploadedFiles.length < 3 && (
-                  <p className="text-amber-600 text-sm">Please select at least 3 images to continue.</p>
+                  <p className="text-amber-600 text-sm">
+                    Please select at least 3 images to continue.
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -405,31 +503,70 @@ export default function SellPage() {
           <Card className="mb-8">
             <CardHeader>
               <CardTitle>Auction Details</CardTitle>
-              <CardDescription>Set the starting price and reserve price for your auction</CardDescription>
+              <CardDescription>
+                Set the starting price, reserve price, and auction duration
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="starting-price">Starting Price *</Label>
-                  <Input 
-                    required 
-                    id="starting-price" 
-                    name="starting-price" 
-                    type="number" 
+                  <Input
+                    required
+                    id="starting-price"
+                    name="starting-price"
+                    type="number"
                     min="0"
-                    placeholder="Enter starting price" 
+                    placeholder="Enter starting price"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="reserve-price">Reserve Price (Optional)</Label>
-                  <Input 
-                    id="reserve-price" 
-                    name="reserve-price" 
-                    type="number" 
+                  <Label htmlFor="reserve-price">
+                    Reserve Price (Optional)
+                  </Label>
+                  <Input
+                    id="reserve-price"
+                    name="reserve-price"
+                    type="number"
                     min="0"
-                    placeholder="Enter reserve price" 
+                    placeholder="Enter reserve price"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="auction-end-date"
+                    className="flex items-center gap-2"
+                  >
+                    <CalendarClock className="h-4 w-4" />
+                    Auction End Date *
+                  </Label>
+                  <Input
+                    required
+                    id="auction-end-date"
+                    name="auction-end-date"
+                    type="date"
+                    min={getMinDate()}
+                    max={getMaxDate()}
+                    defaultValue={(() => {
+                      const defaultDate = new Date();
+                      defaultDate.setDate(defaultDate.getDate() + 7);
+                      return defaultDate.toISOString().split("T")[0];
+                    })()}
+                    onChange={handleEndDateChange}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Auction duration can be up to 30 days from today
+                  </p>
+                </div>
+                {previewEndDate && (
+                  <div className="md:col-span-2 p-4 border border-teal-100 bg-teal-50 rounded-md">
+                    <AuctionCountdown endDate={previewEndDate} />
+                    <p className="text-xs text-gray-500 mt-2">
+                      Preview: This is how your auction countdown will appear to
+                      buyers
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -440,8 +577,8 @@ export default function SellPage() {
                 Cancel
               </Button>
             </Link>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isSubmitting || uploadedFiles.length < 3}
               className="bg-teal-600 hover:bg-teal-700"
             >
@@ -471,6 +608,5 @@ export default function SellPage() {
         </form>
       )}
     </div>
-  )
+  );
 }
-
